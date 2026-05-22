@@ -1296,28 +1296,36 @@
         : SupabaseAuth.signUp(email, password);
 
       action.then(function(result) {
+        // Supabase v2: 返回 { data, error }，失败时 error 非空
+        if (result.error) {
+          if (btn) { btn.disabled = false; btn.textContent = self._mode === 'login' ? '登 录' : '注 册'; }
+          var msg = result.error.message || '操作失败';
+          if (msg.indexOf('Invalid login credentials') >= 0) msg = '邮箱或密码错误';
+          if (msg.indexOf('already registered') >= 0) { msg = '该邮箱已注册，请直接登录'; self._mode = 'login'; self._render(); return; }
+          if (msg.indexOf('Email not confirmed') >= 0) msg = '邮箱未验证，请先查收验证邮件';
+          if (errEl) { errEl.textContent = msg; errEl.style.display = 'block'; }
+          return;
+        }
         if (self._mode === 'register') {
-          // 注册成功
           if (result.data.user && result.data.session) {
-            // 邮箱已确认或未启用确认
             self._onLoginSuccess();
           } else {
-            // 需要确认邮箱
             if (btn) { btn.disabled = false; btn.textContent = '注 册'; }
             Toast.success('注册成功！如需邮箱验证，请查收邮件后登录。');
             self._mode = 'login';
             self._render();
           }
         } else {
-          // 登录成功
-          self._onLoginSuccess();
+          if (result.data.user) {
+            self._onLoginSuccess();
+          } else {
+            if (btn) { btn.disabled = false; btn.textContent = '登 录'; }
+            if (errEl) { errEl.textContent = '登录失败，请重试'; errEl.style.display = 'block'; }
+          }
         }
       }).catch(function(err) {
         if (btn) { btn.disabled = false; btn.textContent = self._mode === 'login' ? '登 录' : '注 册'; }
         var msg = err.message || '操作失败';
-        if (msg.indexOf('Invalid login credentials') >= 0) msg = '邮箱或密码错误';
-        if (msg.indexOf('already registered') >= 0) { msg = '该邮箱已注册，请直接登录'; self._mode = 'login'; self._render(); return; }
-        if (msg.indexOf('Email not confirmed') >= 0) msg = '邮箱未验证，请先查收验证邮件';
         if (errEl) { errEl.textContent = msg; errEl.style.display = 'block'; }
       });
     },

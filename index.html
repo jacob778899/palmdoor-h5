@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>设备管理系统</title>
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ================================================
+       PAGE: index - 设备列表首页
+       ================================================ -->
+  <div id="page-index" class="page">
+    <div class="navbar">
+      <div class="navbar-title">设备管理系统</div>
+      <div class="navbar-right" style="font-size:0.24rem">MQTT: <span id="mqtt-status-text">-</span></div>
+    </div>
+    <div class="device-list" id="device-list-container"></div>
+    <div class="add-device-btn" id="btn-add-device">+ 添加设备</div>
+  </div>
+
+  <!-- ================================================
+       PAGE: device-detail - 设备详情
+       ================================================ -->
+  <div id="page-device-detail" class="page">
+    <div class="navbar">
+      <div class="navbar-back" onclick="router.goBack()">‹</div>
+      <div class="navbar-title" id="detail-title">设备详情</div>
+      <div class="navbar-right"></div>
+    </div>
+    <div id="detail-content"></div>
+  </div>
+
+  <!-- ================================================
+       PAGE: add-device - 添加设备 (AP配网)
+       ================================================ -->
+  <div id="page-add-device" class="page">
+    <div class="navbar">
+      <div class="navbar-back" onclick="router.goBack()">‹</div>
+      <div class="navbar-title">添加设备</div>
+      <div class="navbar-right"></div>
+    </div>
+    <div id="add-device-content" class="ios-page"></div>
+  </div>
+
+  <!-- ================================================
+       PAGE: add-person - 人员添加 + 掌纹注册
+       ================================================ -->
+  <div id="page-add-person" class="page">
+    <div class="navbar">
+      <div class="navbar-back" onclick="router.goBack()">‹</div>
+      <div class="navbar-title">添加人员</div>
+      <div class="navbar-right"></div>
+    </div>
+    <div id="add-person-content" class="add-person-page-wrap"></div>
+  </div>
+
+  <!-- ================================================
+       PAGE: person-manage - 人员管理
+       ================================================ -->
+  <div id="page-person-manage" class="page">
+    <div class="page-header">
+      <div class="header-left" onclick="router.goBack()">
+        <span class="back-icon">←</span>
+        <span class="header-title">人员管理</span>
+      </div>
+    </div>
+    <div class="search-bar">
+      <div class="search-container">
+        <span class="search-icon">🔍</span>
+        <input class="search-input" id="person-search" placeholder="请输入姓名或工号搜索" oninput="Pages.personManage.filter()">
+        <span class="search-clear" id="person-search-clear" style="display:none" onclick="Pages.personManage.clearSearch()">✕</span>
+      </div>
+    </div>
+    <div class="person-list" id="person-list-container"></div>
+  </div>
+
+  <!-- ================================================
+       PAGE: remote-open - 远程开门
+       ================================================ -->
+  <div id="page-remote-open" class="page">
+    <div class="navbar">
+      <div class="navbar-back" onclick="router.goBack()">‹</div>
+      <div class="navbar-title">远程开门</div>
+      <div class="navbar-right"></div>
+    </div>
+    <div id="remote-open-content" class="remote-open-page"></div>
+  </div>
+
+  <!-- ================================================
+       PAGE: device - 设备指令调试
+       ================================================ -->
+  <div id="page-device" class="page">
+    <div class="navbar">
+      <div class="navbar-back" onclick="router.goBack()">‹</div>
+      <div class="navbar-title">设备控制</div>
+      <div class="navbar-right"></div>
+    </div>
+    <div id="device-content" class="device-page-container"></div>
+  </div>
+
+  <!-- ================================================
+       PAGE: admin-transfer - 管理员转让
+       ================================================ -->
+  <div id="page-admin-transfer" class="page">
+    <div class="navbar">
+      <div class="navbar-back" onclick="router.goBack()">‹</div>
+      <div class="navbar-title">管理员转让</div>
+      <div class="navbar-right"></div>
+    </div>
+    <div class="form-page" id="admin-transfer-content"></div>
+  </div>
+
+  <!-- ================================================
+       PAGE: system-info - 系统信息
+       ================================================ -->
+  <div id="page-system-info" class="page">
+    <div class="navbar">
+      <div class="navbar-back" onclick="router.goBack()">‹</div>
+      <div class="navbar-title">系统信息</div>
+      <div class="navbar-right"></div>
+    </div>
+    <div class="info-page-wrap" id="system-info-content"></div>
+  </div>
+
+  <!-- ================================================
+       PAGE: mqtt-settings - MQTT 配置
+       ================================================ -->
+  <div id="page-mqtt-settings" class="page">
+    <div class="navbar">
+      <div class="navbar-back" onclick="router.goBack()">‹</div>
+      <div class="navbar-title">MQTT 配置</div>
+      <div class="navbar-right"></div>
+    </div>
+    <div class="form-page" id="mqtt-settings-content"></div>
+  </div>
+
+  <!-- ================================================
+       PAGE: my - 我的
+       ================================================ -->
+  <div id="page-my" class="page">
+    <div class="my-page" id="my-content"></div>
+  </div>
+
+  <!-- ================================================
+       PAGE: attendance - 考勤记录
+       ================================================ -->
+  <div id="page-attendance" class="page">
+    <div class="navbar">
+      <div class="navbar-back" onclick="router.goBack()">‹</div>
+      <div class="navbar-title">考勤记录</div>
+      <div class="navbar-right"></div>
+    </div>
+    <div class="attendance-page" id="attendance-content"></div>
+  </div>
+
+</div><!-- #app -->
+
+<!-- ================================================
+     Tab Bar
+     ================================================ -->
+<nav class="tab-bar visible" id="tab-bar">
+  <div class="tab-item active" data-tab="index" onclick="router.switchTab('index')">
+    <img class="tab-icon" src="images/tab-device-active.png" alt="">
+    <span class="tab-label">设备管理</span>
+  </div>
+  <div class="tab-item" data-tab="my" onclick="router.switchTab('my')">
+    <img class="tab-icon" src="images/tab-my.png" alt="">
+    <span class="tab-label">我的</span>
+  </div>
+</nav>
+
+<!-- ================================================
+     Global UI Components
+     ================================================ -->
+<div class="toast" id="toast"></div>
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal-box">
+    <div class="modal-title" id="modal-title"></div>
+    <div class="modal-content" id="modal-body"></div>
+    <div class="modal-actions" id="modal-actions"></div>
+  </div>
+</div>
+<div class="loading-overlay" id="loading-overlay">
+  <div class="loading-box">
+    <div class="loading-spinner"></div>
+    <div class="loading-text" id="loading-text">加载中...</div>
+  </div>
+</div>
+
+<!-- ================================================
+     Scripts
+     ================================================ -->
+<script src="js/mqtt.min.js"></script>
+<script src="js/mqtt-client.js"></script>
+<script src="js/app.js"></script>
+
+</body>
+</html>

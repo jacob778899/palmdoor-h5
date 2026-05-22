@@ -6,18 +6,12 @@
   'use strict';
 
   // ============================================================
-  // Storage 封装 (替代 wx.getStorageSync/setStorageSync)
+  // Storage 封装 (SyncStorage = localStorage + Supabase 自动同步)
   // ============================================================
   var Storage = {
-    get: function(key, def) {
-      try { var v = localStorage.getItem(key); return v ? JSON.parse(v) : (def !== undefined ? def : null); }
-      catch(e) { return def !== undefined ? def : null; }
-    },
-    set: function(key, val) {
-      try { localStorage.setItem(key, JSON.stringify(val)); return true; }
-      catch(e) { return false; }
-    },
-    remove: function(key) { try { localStorage.removeItem(key); } catch(e) {} }
+    get: function(key, def) { return SyncStorage.get(key, def); },
+    set: function(key, val) { return SyncStorage.set(key, val); },
+    remove: function(key) { SyncStorage.remove(key); }
   };
 
   // ============================================================
@@ -112,6 +106,11 @@
     },
 
     _showPage: function(page, params) {
+      // 认证守卫：非认证页需要登录
+      if (page !== 'auth' && !SupabaseAuth.isLoggedIn()) {
+        this._showPage('auth', {});
+        return;
+      }
       this._currentPage = page;
       this._currentParams = params || {};
       // Hide all pages
@@ -169,7 +168,26 @@
     init: function() {
       var self = this;
       this.initData();
-      Router.init();
+      Loading.show('加载中...');
+
+      // 先检查登录状态，再初始化路由（避免内容闪现）
+      SupabaseAuth.init().then(function(user) {
+        Router.init();
+        if (user) {
+          return SupabaseDB.pull().then(function() {
+            Loading.hide();
+            Router._showPage('index', {});
+          });
+        } else {
+          Loading.hide();
+          Router._showPage('auth', {});
+        }
+      }).catch(function() {
+        Router.init();
+        Loading.hide();
+        Router._showPage('auth', {});
+      });
+
       try { this.initMqtt(); } catch(e) { console.error('[App] MQTT init error:', e); }
       // Periodically update MQTT status display
       setInterval(function() {
@@ -1028,14 +1046,39 @@
   Pages.my = {
     onShow: function() {
       var c = document.getElementById('my-content'); if (!c) return;
-      var h = '<div class="my-header"><div class="my-avatar">👤</div><div class="my-name">管理员</div><div class="my-role">设备管理系统</div></div>' +
+      var user = SupabaseAuth.getUser();
+      var email = user ? user.email : '未登录';
+      var h = '<div class="my-header"><div class="my-avatar">👤</div><div class="my-name">' + email + '</div><div class="my-role">设备管理系统</div></div>' +
         '<div class="my-menu">' +
         '<div class="my-menu-item" onclick="Router.navigate(\'mqtt-settings\')"><div class="my-menu-icon" style="background:#e6f7ff">⚙️</div><span class="my-menu-text">MQTT 配置</span><span class="my-menu-arrow">›</span></div>' +
         '<div class="my-menu-item" onclick="Router.navigate(\'system-info\')"><div class="my-menu-icon" style="background:#f6ffed">📱</div><span class="my-menu-text">系统信息</span><span class="my-menu-arrow">›</span></div>' +
         '<div class="my-menu-item" onclick="Router.navigate(\'person-manage\')"><div class="my-menu-icon" style="background:#fff7e6">👥</div><span class="my-menu-text">人员管理</span><span class="my-menu-arrow">›</span></div>' +
         '</div>' +
+        '<div class="my-menu" style="margin-top:0.3rem">' +
+        '<div class="my-menu-item" id="btn-logout" style="justify-content:center;color:#ff4d4f"><span style="font-size:0.3rem">退出登录</span></div>' +
+        '</div>' +
         '<div style="text-align:center;color:#999;font-size:0.24rem;padding:0.5rem">PalmDoor 设备管理系统 v1.0.0</div>';
       c.innerHTML = h;
+      var btnLogout = document.getElementById('btn-logout');
+      if (btnLogout) btnLogout.onclick = function() {
+        Modal.show({
+          title: '退出登录', content: '确定要退出当前账户吗？',
+          confirmText: '退出', confirmColor: 'danger',
+          onConfirm: function() {
+            Loading.show('退出中...');
+            SyncStorage.flush().then(function() {
+              return SupabaseAuth.signOut();
+            }).then(function() {
+              Loading.hide();
+              try { App.mqttClient.disconnect(); } catch(e) {}
+              Router._showPage('auth', {});
+            }).catch(function() {
+              Loading.hide();
+              Toast.error('退出失败');
+            });
+          }
+        });
+      };
     }
   };
 
@@ -1180,6 +1223,120 @@
         a.click(); URL.revokeObjectURL(url);
         Toast.success('导出完成');
       };
+    }
+  };
+
+  // ---------- auth (登录/注册) ----------
+  Pages.auth = {
+    _mode: 'login',
+    _email: '',
+    _password: '',
+
+    onShow: function() { this._render(); },
+
+    _render: function() {
+      var c = document.getElementById('auth-content');
+      if (!c) return;
+      var self = this;
+      var isLogin = this._mode === 'login';
+      var h = '<div class="auth-container">' +
+        '<div class="auth-card">' +
+        '<div class="auth-logo">🔐</div>' +
+        '<div class="auth-app-name">设备管理系统</div>' +
+        '<div class="auth-subtitle">' + (isLogin ? '登录你的账户' : '创建新账户') + '</div>' +
+        '<div class="auth-form">' +
+        '<div class="auth-input-group"><span class="auth-input-icon">📧</span>' +
+        '<input class="auth-input" id="auth-email" type="email" placeholder="邮箱地址" value="' + this._email + '" autocomplete="email"></div>' +
+        '<div class="auth-input-group"><span class="auth-input-icon">🔒</span>' +
+        '<input class="auth-input" id="auth-password" type="password" placeholder="密码（至少6位）" value="' + this._password + '" autocomplete="' + (isLogin ? 'current-password' : 'new-password') + '"></div>' +
+        '<div class="auth-error" id="auth-error" style="display:none"></div>' +
+        '<button class="auth-btn" id="btn-auth-submit">' + (isLogin ? '登 录' : '注 册') + '</button>' +
+        '</div>' +
+        '<div class="auth-switch">' +
+        (isLogin ? '还没有账户？' : '已有账户？') +
+        '<span class="auth-link" id="btn-auth-switch">' + (isLogin ? '立即注册' : '去登录') + '</span>' +
+        '</div></div></div>';
+      c.innerHTML = h;
+
+      document.getElementById('btn-auth-submit').onclick = function() { self._submit(); };
+      document.getElementById('btn-auth-switch').onclick = function() {
+        self._mode = isLogin ? 'register' : 'login';
+        self._render();
+      };
+      var inpPwd = document.getElementById('auth-password');
+      if (inpPwd) inpPwd.onkeydown = function(e) { if (e.key === 'Enter') self._submit(); };
+      var inpEmail = document.getElementById('auth-email');
+      if (inpEmail) inpEmail.oninput = function() { self._email = this.value.trim(); };
+      if (inpPwd) inpPwd.oninput = function() { self._password = this.value; };
+    },
+
+    _submit: function() {
+      var emailInp = document.getElementById('auth-email');
+      var pwdInp = document.getElementById('auth-password');
+      var email = emailInp ? emailInp.value.trim() : '';
+      var password = pwdInp ? pwdInp.value : '';
+      var errEl = document.getElementById('auth-error');
+
+      if (!email || email.indexOf('@') < 0) {
+        if (errEl) { errEl.textContent = '请输入有效的邮箱地址'; errEl.style.display = 'block'; }
+        return;
+      }
+      if (password.length < 6) {
+        if (errEl) { errEl.textContent = '密码至少需要6位'; errEl.style.display = 'block'; }
+        return;
+      }
+      if (errEl) errEl.style.display = 'none';
+
+      var self = this;
+      var btn = document.getElementById('btn-auth-submit');
+      if (btn) { btn.disabled = true; btn.textContent = '处理中...'; }
+
+      var action = this._mode === 'login'
+        ? SupabaseAuth.signIn(email, password)
+        : SupabaseAuth.signUp(email, password);
+
+      action.then(function(result) {
+        if (self._mode === 'register') {
+          // 注册成功
+          if (result.data.user && result.data.session) {
+            // 邮箱已确认或未启用确认
+            self._onLoginSuccess();
+          } else {
+            // 需要确认邮箱
+            if (btn) { btn.disabled = false; btn.textContent = '注 册'; }
+            Toast.success('注册成功！如需邮箱验证，请查收邮件后登录。');
+            self._mode = 'login';
+            self._render();
+          }
+        } else {
+          // 登录成功
+          self._onLoginSuccess();
+        }
+      }).catch(function(err) {
+        if (btn) { btn.disabled = false; btn.textContent = self._mode === 'login' ? '登 录' : '注 册'; }
+        var msg = err.message || '操作失败';
+        if (msg.indexOf('Invalid login credentials') >= 0) msg = '邮箱或密码错误';
+        if (msg.indexOf('already registered') >= 0) { msg = '该邮箱已注册，请直接登录'; self._mode = 'login'; self._render(); return; }
+        if (msg.indexOf('Email not confirmed') >= 0) msg = '邮箱未验证，请先查收验证邮件';
+        if (errEl) { errEl.textContent = msg; errEl.style.display = 'block'; }
+      });
+    },
+
+    _onLoginSuccess: function() {
+      Loading.show('同步数据中...');
+      var self = this;
+      SupabaseDB.pull().then(function() {
+        Loading.hide();
+        var authPage = document.getElementById('page-auth');
+        if (authPage) authPage.classList.remove('active');
+        Router.switchTab('index');
+        Pages.index.renderDeviceList();
+      }).catch(function() {
+        Loading.hide();
+        var authPage = document.getElementById('page-auth');
+        if (authPage) authPage.classList.remove('active');
+        Router.switchTab('index');
+      });
     }
   };
 
